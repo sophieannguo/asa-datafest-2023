@@ -1,0 +1,116 @@
+---
+title: "Data Fest 2023"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r, include = FALSE}
+library(readr)
+library(tidyverse)
+library(usmap)
+library(ggplot2)
+library(paletteer)
+```
+
+```{r, include = FALSE}
+attorneys = read_csv("attorneys.csv", show_col_types = FALSE)
+attorneytimeentries = read_csv("attorneytimeentries.csv", show_col_types = FALSE)
+categories = read_csv("categories.csv", show_col_types = FALSE)
+clients = read_csv("clients.csv", show_col_types = FALSE)
+questions = read_csv("questions.csv", show_col_types = FALSE)
+statesites = read_csv("statesites.csv", show_col_types = FALSE)
+subcategories = read_csv("subcategories.csv", show_col_types = FALSE)
+```
+
+```{r}
+clients_state_count = clients %>% 
+  group_by(StateAbbr) %>%
+  summarize(Clients = n())
+  
+attorneys_state_count = attorneys %>%
+  group_by(StateAbbr) %>%
+  summarize(Attorneys = n())
+
+State_Numbers = full_join(clients_state_count, attorneys_state_count, by = "StateAbbr")
+State_Numbers[(is.na(State_Numbers))] = 0
+
+State_Breakdown = State_Numbers %>%
+  rename(State = StateAbbr) %>%
+  filter(State != "ABA Federal") %>%
+  mutate(Raw_Difference = Clients - Attorneys,
+         Client_to_Attorney = Clients / Attorneys,
+         Client_Prop = Clients/sum(Clients)*100,
+          Attorneys_Prop = Attorneys/sum(Attorneys)*100,
+         Difference_in_Prop = Client_Prop - Attorneys_Prop,
+         fips = fips(State))
+
+State_Breakdown %>%
+  arrange(desc(Client_to_Attorney))
+```
+```{r}
+library(knitr)
+library(kableExtra)
+
+sum = sum(State_Breakdown$Client_to_Attorney)
+State_Breakdown %>% 
+  mutate(Factor = State_Breakdown$Client_to_Attorney/sum) %>%
+  select(State, Factor) %>%
+  arrange(desc(Factor)) %>%
+  head(10) %>%
+  kbl(caption = "Recruitment Allocation") %>%
+  kable_classic(full_width = F, html_font = "Arial")
+```
+
+```{r}
+plot_usmap(data = State_Breakdown, values = "Clients", color = "black") + 
+  scale_fill_distiller(direction = 1, na.value = "white", name = "Number of Clients", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+plot_usmap(data = State_Breakdown, values = "Attorneys", color = "black") + 
+  scale_fill_distiller(palette = 3, direction = 1, na.value = "white", name = "Number of Attorneys", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+plot_usmap(data = State_Breakdown, values = "Difference_in_Prop", color = "black") + 
+  scale_fill_distiller(palette = 2, direction = 1, na.value = "white", name = "Difference in Percentage of Clients and Attorneys", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+plot_usmap(data = State_Breakdown, values = "Raw_Difference", color = "black") + 
+  scale_fill_continuous(low = "#FFFCEC", high = "#503700", na.value = "white", name = "Difference in Number of Clients and Attorneys", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+plot_usmap(data = State_Breakdown, values = "Client_to_Attorney", color = "black") + 
+  scale_fill_distiller(palette = "RdPu", direction = 1, na.value = "white", name = "Client to Attorney Ratio", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+questions = questions %>%
+  separate(AskedOnUtc, c("Month", "Day", "Year"), sep = "/") %>%
+  separate(Year, c("Year", "Time"), sep = " ") %>%
+  separate(Time, c("Hour", "Min"), sep = ":") %>%
+  mutate(Hour = as.numeric(Hour))
+
+questions %>% 
+  group_by(Hour) %>%
+  summarize(n = n()) %>% 
+  arrange(desc(n))
+```
+
+```{r}
+questions %>%
+  ggplot(mapping = aes(x = Hour, fill = Category)) + 
+  geom_histogram(binwidth = 1) +
+  scale_fill_manual(values=paletteer_d("ggthemes::Classic_Purple_Gray_12")) +
+  theme_minimal() +  
+  labs(y = "Number of Questions", title = "Daily Distribution of Questions")
+```
+
